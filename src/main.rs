@@ -82,6 +82,7 @@ unsafe fn main() -> ! {
     let epaper_clock = pins.gpio10.into_function::<hal::gpio::FunctionSpi>();
     let epaper_mosi = pins.gpio11.into_function::<hal::gpio::FunctionSpi>();
     let epaper_reset = pins.gpio12.into_push_pull_output_in_state(hal::gpio::PinState::High);
+    let epaper_busy = pins.gpio13.into_pull_up_input();
 
     let spi_uninit = hal::Spi::<_, _, _, 8>::new(pac.SPI1, (epaper_mosi, epaper_clock));
     // Exchange the uninitialised SPI driver for an initialised one
@@ -92,7 +93,7 @@ unsafe fn main() -> ! {
         embedded_hal::spi::MODE_0,
     );
 
-    let mut screen = E29::new(spi, epaper_dc, epaper_reset, 128, 296);
+    let mut screen = E29::new(spi, epaper_dc, epaper_reset, epaper_busy, 128, 296);
 
     rprintln!("Initialising");
     screen.init(&mut delay);

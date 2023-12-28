@@ -22,3 +22,4 @@ rp-pico = "0.8.0"
 log = "0.4.20"
 rtt-target = "0.4.0"
 panic-probe = { version = "0.2", features = ["print-rtt"] }
+embedded-graphics = "0.8.1"

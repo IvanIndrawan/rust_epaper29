@@ -2,13 +2,14 @@ use cortex_m::asm::delay;
 use cortex_m::delay::Delay;
 use embedded_hal::blocking::delay::DelayMs;
 use embedded_hal::blocking::spi;
-use embedded_hal::digital::v2::OutputPin;
+use embedded_hal::digital::v2::{InputPin, OutputPin};
 
-pub struct E29<SPI, DC, RST>
+pub struct E29<SPI, DC, RST, BUSY>
     where
         SPI: spi::Write<u8>,
         DC: OutputPin,
         RST: OutputPin,
+        BUSY: InputPin
 {
     /// SPI
     spi: SPI,
@@ -19,6 +20,9 @@ pub struct E29<SPI, DC, RST>
     /// Reset pin.
     rst: RST,
 
+    /// Reset pin.
+    busy: BUSY,
+
     /// Global image offset
     dx: u16,
     dy: u16,
@@ -26,17 +30,19 @@ pub struct E29<SPI, DC, RST>
     height: u32,
 }
 
-impl<SPI, DC, RST> E29<SPI, DC, RST>
+impl<SPI, DC, RST, BUSY> E29<SPI, DC, RST, BUSY>
     where
         SPI: spi::Write<u8>,
         DC: OutputPin,
         RST: OutputPin,
+        BUSY: InputPin,
 {
     /// Creates a new driver instance that uses hardware SPI.
     pub fn new(
         spi: SPI,
         dc: DC,
         rst: RST,
+        busy: BUSY,
         width: u32,
         height: u32,
     ) -> Self {
@@ -44,6 +50,7 @@ impl<SPI, DC, RST> E29<SPI, DC, RST>
             spi,
             dc,
             rst,
+            busy,
             dx: 0,
             dy: 0,
             width,
@@ -93,9 +100,12 @@ impl<SPI, DC, RST> E29<SPI, DC, RST>
         where
             DELAY: DelayMs<u8>,
     {
-        for i in 1..20 {
+        'busy_loop: loop {
             self.write_command(0x71, &[]);
             delay.delay_ms(200);
+            if self.busy.is_high() {
+                break 'busy_loop;
+            }
         }
 
     }
