@@ -19,11 +19,13 @@ use rp_pico::hal::prelude::*;
 
 // A shorter alias for the Peripheral Access Crate, which provides low-level
 // register access
-use rp_pico::hal::pac;
+use rp_pico::hal::{gpio, pac, spi};
 
 // A shorter alias for the Hardware Abstraction Layer, which provides
 // higher-level drivers.
 use rp_pico::hal;
+use rp_pico::hal::fugit::RateExtU32;
+use rust_epaper29::epaper29::E29;
 
 /// Entry point to our bare-metal application.
 ///
@@ -74,6 +76,32 @@ unsafe fn main() -> ! {
     );
 
     rtt_init_print!();
+
+    // Set up our SPI pins as per  https://www.waveshare.com/2.9inch-e-paper-module-b.htm
+    let epaper_dc = pins.gpio8.into_push_pull_output();
+    let epaper_clock = pins.gpio10.into_function::<hal::gpio::FunctionSpi>();
+    let epaper_mosi = pins.gpio11.into_function::<hal::gpio::FunctionSpi>();
+    let epaper_reset = pins.gpio12.into_push_pull_output_in_state(hal::gpio::PinState::High);
+
+    let spi_uninit = hal::Spi::<_, _, _, 8>::new(pac.SPI1, (epaper_mosi, epaper_clock));
+    // Exchange the uninitialised SPI driver for an initialised one
+    let spi = spi_uninit.init(
+        &mut pac.RESETS,
+        clocks.peripheral_clock.freq(),
+        10.MHz(),
+        embedded_hal::spi::MODE_0,
+    );
+
+    let mut screen = E29::new(spi, epaper_dc, epaper_reset, 128, 296);
+
+    rprintln!("Initialising");
+    screen.init(&mut delay);
+    rprintln!("Clearing screen");
+    screen.clear(&mut delay);
+    rprintln!("Start drawing");
+    loop {
+        delay.delay_ms(100);
+    }
 
 
 }
