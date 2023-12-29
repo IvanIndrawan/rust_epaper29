@@ -93,12 +93,12 @@ unsafe fn main() -> ! {
         embedded_hal::spi::MODE_0,
     );
 
-    let mut screen = E29::new(spi, epaper_dc, epaper_reset, epaper_busy, 128, 296);
+    let mut screen = E29::new(spi, epaper_dc, epaper_reset, epaper_busy, 128, 296, &mut delay);
 
     rprintln!("Initialising");
-    screen.init(&mut delay);
+    screen.init();
     rprintln!("Clearing screen");
-    screen.clear(&mut delay);
+    screen.clear_screen();
     rprintln!("Start drawing");
     loop {
         delay.delay_ms(100);
