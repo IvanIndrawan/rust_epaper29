@@ -6,9 +6,11 @@ use rtt_target::{rtt_init_print, rprintln};
 // The trait used by formatting macros like write! and writeln!
 use core::fmt::Write as FmtWrite;
 use embedded_graphics::mono_font::MonoTextStyleBuilder;
+use embedded_graphics::primitives::{Circle, Line, Primitive, PrimitiveStyle};
 use embedded_graphics::text::{Baseline, Text, TextStyleBuilder};
 use embedded_graphics_core::Drawable;
 use embedded_graphics_core::geometry::Point;
+use embedded_graphics_core::pixelcolor::BinaryColor;
 
 use embedded_hal::digital::v2::OutputPin;
 // The macro for our start-up function
@@ -103,6 +105,9 @@ unsafe fn main() -> ! {
     screen.init();
     rprintln!("Clearing screen");
     screen.clear_screen();
+
+    // delay.delay_ms(2000);
+
     rprintln!("Start drawing");
 
     //write a line here
@@ -111,8 +116,20 @@ unsafe fn main() -> ! {
         .build();
 
     let text_style = TextStyleBuilder::new().baseline(Baseline::Top).build();
-    let _ = Text::with_text_style("Hello world!", Point::new(10, 10), style, text_style).draw(screen.getBlackDisplay());
-    screen.update_display();
+    let nextPos = Text::with_text_style("Hello world!", Point::new(10, 10), style, text_style).draw(screen.get_red_display()).unwrap();
+
+    let _ = Line::new(Point::new(64, 64), Point::new(30, 40))
+        .into_styled(PrimitiveStyle::with_stroke(BinaryColor::On, 4))
+        .draw(screen.get_red_display());
+
+    let _ = Circle::with_center(Point::new(64, 64), 80)
+        .into_styled(PrimitiveStyle::with_stroke(BinaryColor::On, 1))
+        .draw(screen.get_red_display());
+
+    rprintln!("Next position is {}, {}", nextPos.x, nextPos.y);
+    screen.update_black_display();
+    screen.update_red_display();
+    screen.refresh_display();
 
     rprintln!("Going to sleep");
     screen.sleep();

@@ -83,42 +83,86 @@ impl<'d, SPI, DC, RST, BUSY, DELAY> E29<'d, SPI, DC, RST, BUSY, DELAY>
         display
     }
 
-    pub fn getBlackDisplay(&mut self)-> &mut Framebuffer<BinaryColor, RawU1, LittleEndian, WIDTH, HEIGHT, {buffer_size::<BinaryColor>(WIDTH, HEIGHT)}> {
+    pub fn get_black_display(&mut self) -> &mut Framebuffer<BinaryColor, RawU1, LittleEndian, WIDTH, HEIGHT, {buffer_size::<BinaryColor>(WIDTH, HEIGHT)}> {
         return &mut self.black_display;
     }
 
-    pub fn update_display(&mut self) {
+    pub fn get_red_display(&mut self) -> &mut Framebuffer<BinaryColor, RawU1, LittleEndian, WIDTH, HEIGHT, {buffer_size::<BinaryColor>(WIDTH, HEIGHT)}> {
+        return &mut self.red_display;
+    }
+
+    pub fn update_black_display(&mut self) {
         let data = self.black_display.data_mut();
-        let mut data_write: [u8; PIXEL_REGISTERS] = [0;PIXEL_REGISTERS];
+        let mut data_write: [u8; PIXEL_REGISTERS] = [0; PIXEL_REGISTERS];
         data_write.copy_from_slice(&data[0..]);
 
-        self.write_command(0x10, &[]);
         self.read_busy();
-        rprintln!("Updating display with data {}", data_write);
+
+        self.write_command(0x10, &[]);
+
+        rprintln!("Updating black display with data ");
         self.start_data();
-        self.write_data(&data_write);
+        for i in 0..PIXEL_REGISTERS {
+            if data_write[i] > 0 {
+                rprintln!("B: {} - {}", i, data_write[i]);
+            }
+            self.write_negate_data(&[data_write[i]]);
+        }
         self.end_data();
+        self.delay.delay_ms(200);
+    }
+    pub fn update_red_display(&mut self) {
+        let data_red = self.red_display.data_mut();
+        let mut data_write: [u8; PIXEL_REGISTERS] = [0; PIXEL_REGISTERS];
+        data_write.copy_from_slice(&data_red[0..]);
+
+        self.read_busy();
+
+        self.write_command(0x13, &[]);
+        rprintln!("Updating red display with data ");
+        self.start_data();
+        for i in 0..PIXEL_REGISTERS {
+            if data_write[i] > 0 {
+                rprintln!("R: {} - {}", i, data_write[i]);
+            }
+            self.write_negate_data(&[data_write[i]]);
+        }
+        self.end_data();
+
+        self.delay.delay_ms(200);
+        rprintln!("Refresh display");
 
     }
 
+    pub fn refresh_display(&mut self) {
+        self.read_busy();
+        self.write_command(0x12, &[]);
+        self.read_busy();
+        rprintln!("Finished rendering process 123");
+    }
     pub fn init(&mut self) -> Result<(), ()>
     {
         self.hard_reset().unwrap();
+
+        self.write_command(0x06, &[]).unwrap();
+        self.write_data(&[0x17]).unwrap();
+        self.write_data(&[0x17]).unwrap();
+        self.write_data(&[0x17]).unwrap();
 
         self.write_command(0x04, &[]).unwrap();
         self.read_busy(); //waiting for the electronic paper IC to release the idle signal
 
         self.write_command(0x00, &[]).unwrap();   //panel setting
-        self.write_data(&[0x0f]).unwrap();   //LUT from OTP,128x296
-        self.write_data(&[0x89]).unwrap();    //Temperature sensor, boost and other related timing settings
+        self.write_data(&[0x8f]).unwrap();
+
+        self.write_command(0x50, &[]);    //VCOM AND DATA INTERVAL SETTING
+        self.write_data(&[0x77]);   //Bmode:VBDF 17|D7 VBDW 97 VBDB 57
 
         self.write_command(0x61, &[]).unwrap();    //set resolution
         self.write_data(&[0x80]).unwrap();
         self.write_data(&[0x01]).unwrap();
         self.write_data(&[0x28]).unwrap();
 
-        self.write_command(0x50, &[]);    //VCOM AND DATA INTERVAL SETTING
-        self.write_data(&[0x77]);   //Bmode:VBDF 17|D7 VBDW 97 VBDB 57
         Ok(())
     }
 
@@ -143,7 +187,7 @@ impl<'d, SPI, DC, RST, BUSY, DELAY> E29<'d, SPI, DC, RST, BUSY, DELAY>
             self.delay.delay_ms(200);
             x=x+1;
             if self.busy.is_high().map_err(|_| false).unwrap() {
-                rprintln!("Busy pin is released");
+                // rprintln!("Busy pin is released");
                 break 'busy_loop;
             }
             rprintln!("Still busy {}", x);
@@ -162,7 +206,13 @@ impl<'d, SPI, DC, RST, BUSY, DELAY> E29<'d, SPI, DC, RST, BUSY, DELAY>
     }
 
     fn write_data(&mut self, data: &[u8]) -> Result<(), ()> {
-        self.spi.write(data);
+        self.spi.write(&data);
+        Ok(())
+    }
+
+    fn write_negate_data(&mut self, data: &[u8]) -> Result<(), ()> {
+        let negate_data = [!data[0]];
+        self.spi.write(&negate_data);
         Ok(())
     }
 
@@ -182,7 +232,7 @@ impl<'d, SPI, DC, RST, BUSY, DELAY> E29<'d, SPI, DC, RST, BUSY, DELAY>
         self.write_command(0x10, &[]);
         self.start_data();
         for i in 0..PIXEL_REGISTERS {
-            self.write_data(&[0xff]);
+            self.spi.write(&[0xff]);
         }
         self.end_data();
         self.write_command(0x13, &[]);
@@ -204,27 +254,6 @@ impl<'d, SPI, DC, RST, BUSY, DELAY> E29<'d, SPI, DC, RST, BUSY, DELAY>
 
         self.delay.delay_ms(200);
         Ok(())
-    }
-
-    /// Writes a data word to the display.
-    fn write_word(&mut self, value: u16) -> Result<(), ()> {
-        self.write_data(&value.to_be_bytes())
-    }
-
-    fn write_words_buffered(&mut self, words: impl IntoIterator<Item=u16>) -> Result<(), ()> {
-        let mut buffer = [0; 32];
-        let mut index = 0;
-        for word in words {
-            let as_bytes = word.to_be_bytes();
-            buffer[index] = as_bytes[0];
-            buffer[index + 1] = as_bytes[1];
-            index += 2;
-            if index >= buffer.len() {
-                self.write_data(&buffer)?;
-                index = 0;
-            }
-        }
-        self.write_data(&buffer[0..index])
     }
 }
 
