@@ -1,15 +1,18 @@
-use cortex_m::asm::delay;
-use cortex_m::delay::Delay;
-use embedded_graphics::draw_target::DrawTarget;
+use embedded_graphics::framebuffer::{buffer_size, Framebuffer};
 use embedded_graphics::geometry::Dimensions;
-use embedded_graphics::Pixel;
 use embedded_graphics::pixelcolor::BinaryColor;
-use embedded_graphics::pixelcolor::raw::RawU16;
 use embedded_graphics::primitives::Rectangle;
+use embedded_graphics_core::pixelcolor::raw::{LittleEndian, RawU1};
 use embedded_hal::blocking::delay::DelayMs;
 use embedded_hal::blocking::spi;
 use embedded_hal::digital::v2::{InputPin, OutputPin};
 use rtt_target::rprintln;
+
+pub const WIDTH: usize = 128;
+pub const HEIGHT: usize = 296;
+
+pub const PIXEL_REGISTERS: usize = WIDTH * HEIGHT / 8;
+
 
 pub struct E29<'d, SPI, DC, RST, BUSY, DELAY>
     where
@@ -39,6 +42,9 @@ pub struct E29<'d, SPI, DC, RST, BUSY, DELAY>
 
     ///delay
     delay: &'d mut DELAY,
+
+    black_display: Framebuffer<BinaryColor, RawU1, LittleEndian, WIDTH, HEIGHT, {buffer_size::<BinaryColor>(WIDTH, HEIGHT)}>,
+    red_display: Framebuffer<BinaryColor, RawU1, LittleEndian, WIDTH, HEIGHT, {buffer_size::<BinaryColor>(WIDTH, HEIGHT)}>,
 }
 
 impl<'d, SPI, DC, RST, BUSY, DELAY> E29<'d, SPI, DC, RST, BUSY, DELAY>
@@ -59,6 +65,8 @@ impl<'d, SPI, DC, RST, BUSY, DELAY> E29<'d, SPI, DC, RST, BUSY, DELAY>
         height: u32,
         delay: &'d mut DELAY,
     ) -> Self {
+        let mut black_display =  Framebuffer::<BinaryColor, RawU1, LittleEndian, WIDTH, HEIGHT, {buffer_size::<BinaryColor>(WIDTH, HEIGHT)}>::new();
+        let mut red_display = Framebuffer::<BinaryColor, RawU1, LittleEndian, WIDTH, HEIGHT, {buffer_size::<BinaryColor>(WIDTH, HEIGHT)}>::new();
         let display = E29 {
             spi,
             dc,
@@ -69,8 +77,28 @@ impl<'d, SPI, DC, RST, BUSY, DELAY> E29<'d, SPI, DC, RST, BUSY, DELAY>
             width,
             height,
             delay,
+            black_display,
+            red_display,
         };
         display
+    }
+
+    pub fn getBlackDisplay(&mut self)-> &mut Framebuffer<BinaryColor, RawU1, LittleEndian, WIDTH, HEIGHT, {buffer_size::<BinaryColor>(WIDTH, HEIGHT)}> {
+        return &mut self.black_display;
+    }
+
+    pub fn update_display(&mut self) {
+        let data = self.black_display.data_mut();
+        let mut data_write: [u8; PIXEL_REGISTERS] = [0;PIXEL_REGISTERS];
+        data_write.copy_from_slice(&data[0..]);
+
+        self.write_command(0x10, &[]);
+        self.read_busy();
+        rprintln!("Updating display with data {}", data_write);
+        self.start_data();
+        self.write_data(&data_write);
+        self.end_data();
+
     }
 
     pub fn init(&mut self) -> Result<(), ()>
@@ -118,11 +146,7 @@ impl<'d, SPI, DC, RST, BUSY, DELAY> E29<'d, SPI, DC, RST, BUSY, DELAY>
                 rprintln!("Busy pin is released");
                 break 'busy_loop;
             }
-            if x>30 {
-                rprintln!("waiting for too long");
-                break 'busy_loop;
-            }
-            rprintln!("Still busy");
+            rprintln!("Still busy {}", x);
 
         }
 
@@ -144,29 +168,40 @@ impl<'d, SPI, DC, RST, BUSY, DELAY> E29<'d, SPI, DC, RST, BUSY, DELAY>
 
     fn start_data(&mut self) -> Result<(), ()> {
         self.dc.set_high();
+        self.delay.delay_ms(10);
         Ok(())
     }
 
     fn end_data(&mut self) -> Result<(), ()> {
+        self.delay.delay_ms(10);
         self.dc.set_low();
         Ok(())
     }
 
-
     pub fn clear_screen(&mut self) -> Result<(), ()> {
         self.write_command(0x10, &[]);
         self.start_data();
-        for i in 0..4736 {
+        for i in 0..PIXEL_REGISTERS {
             self.write_data(&[0xff]);
         }
         self.end_data();
         self.write_command(0x13, &[]);
         self.start_data();
-        for i in 0..4736 {
+        for i in 0..PIXEL_REGISTERS {
             self.spi.write(&[0xff]);
         }
         self.end_data();
         self.write_command(0x12, &[]);
+        self.delay.delay_ms(200);
+        Ok(())
+    }
+
+    pub fn sleep(&mut self) -> Result<(),()> {
+        self.write_command(0x02, &[]).unwrap(); //power off
+        self.read_busy();
+        self.write_command(0x07, &[]).unwrap(); // deep sleep
+        self.write_data(&[0xA5]).unwrap();
+
         self.delay.delay_ms(200);
         Ok(())
     }
@@ -205,65 +240,3 @@ impl<'d, SPI, DC, RST, BUSY, DELAY> Dimensions for E29<'d, SPI, DC, RST, BUSY, D
         todo!()
     }
 }
-
-impl <'d,SPI, DC, RST, BUSY, DELAY> DrawTarget for E29<'d, SPI, DC, RST, BUSY, DELAY>
-    where
-        SPI: spi::Write<u8>,
-        DC: OutputPin,
-        RST: OutputPin,
-        BUSY: InputPin,
-        DELAY: DelayMs<u8>,
-{
-    type Color = BinaryColor;
-    type Error = ();
-
-    fn draw_iter<I>(&mut self, pixels: I) -> Result<(), Self::Error> where I: IntoIterator<Item=Pixel<Self::Color>> {
-        todo!()
-    }
-
-    fn fill_contiguous<I>(&mut self, area: &Rectangle, colors: I) -> Result<(), Self::Error> where I: IntoIterator<Item=Self::Color> {
-        todo!()
-    }
-
-    fn fill_solid(&mut self, area: &Rectangle, color: Self::Color) -> Result<(), Self::Error> {
-        todo!()
-    }
-
-    fn clear(&mut self, color: Self::Color) -> Result<(), Self::Error> {
-        self.clear_screen()
-    }
-}
-//     fn fill_contiguous<I>(&mut self, area: &Rectangle, colors: I) -> Result<(), Self::Error>
-//         where
-//             I: IntoIterator<Item = Self::Color>,
-//     {
-//         // Clamp area to drawable part of the display target
-//         let drawable_area = area.intersection(&Rectangle::new(Point::zero(), self.size()));
-//
-//         if drawable_area.size != Size::zero() {
-//             self.set_pixels_buffered(
-//                 drawable_area.top_left.x as u16,
-//                 drawable_area.top_left.y as u16,
-//                 (drawable_area.top_left.x + (drawable_area.size.width - 1) as i32) as u16,
-//                 (drawable_area.top_left.y + (drawable_area.size.height - 1) as i32) as u16,
-//                 area.points()
-//                     .zip(colors)
-//                     .filter(|(pos, _color)| drawable_area.contains(*pos))
-//                     .map(|(_pos, color)| RawU16::from(color).into_inner()),
-//             )?;
-//         }
-//
-//         Ok(())
-//     }
-//
-//     fn clear(&mut self, color: Self::Color) -> Result<(), Self::Error> {
-//         self.set_pixels_buffered(
-//             0,
-//             0,
-//             self.width as u16 - 1,
-//             self.height as u16 - 1,
-//             core::iter::repeat(RawU16::from(color).into_inner())
-//                 .take((self.width * self.height) as usize),
-//         )
-//     }
-// }

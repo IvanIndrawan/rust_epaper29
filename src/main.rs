@@ -5,6 +5,10 @@ use rtt_target::{rtt_init_print, rprintln};
 
 // The trait used by formatting macros like write! and writeln!
 use core::fmt::Write as FmtWrite;
+use embedded_graphics::mono_font::MonoTextStyleBuilder;
+use embedded_graphics::text::{Baseline, Text, TextStyleBuilder};
+use embedded_graphics_core::Drawable;
+use embedded_graphics_core::geometry::Point;
 
 use embedded_hal::digital::v2::OutputPin;
 // The macro for our start-up function
@@ -100,9 +104,21 @@ unsafe fn main() -> ! {
     rprintln!("Clearing screen");
     screen.clear_screen();
     rprintln!("Start drawing");
+
+    //write a line here
+    let style = MonoTextStyleBuilder::new()
+        .font(&embedded_graphics::mono_font::ascii::FONT_6X10)
+        .build();
+
+    let text_style = TextStyleBuilder::new().baseline(Baseline::Top).build();
+    let _ = Text::with_text_style("Hello world!", Point::new(10, 10), style, text_style).draw(screen.getBlackDisplay());
+    screen.update_display();
+
+    rprintln!("Going to sleep");
+    screen.sleep();
+    rprintln!("Sleeping now");
     loop {
         delay.delay_ms(100);
     }
-
 
 }
