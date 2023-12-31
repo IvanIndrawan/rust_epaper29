@@ -106,13 +106,15 @@ unsafe fn main() -> ! {
     rprintln!("Clearing screen");
     screen.clear_screen();
 
-    // delay.delay_ms(2000);
+
 
     rprintln!("Start drawing");
 
     //write a line here
     let style = MonoTextStyleBuilder::new()
         .font(&embedded_graphics::mono_font::ascii::FONT_6X10)
+        .background_color(BinaryColor::Off)
+        .text_color(BinaryColor::On)
         .build();
 
     let text_style = TextStyleBuilder::new().baseline(Baseline::Top).build();
@@ -126,9 +128,14 @@ unsafe fn main() -> ! {
         .into_styled(PrimitiveStyle::with_stroke(BinaryColor::On, 1))
         .draw(screen.get_red_display());
 
+    let _ = Circle::with_center(Point::new(64, 144), 80)
+        .into_styled(PrimitiveStyle::with_stroke(BinaryColor::On, 2))
+        .draw(screen.get_black_display());
+
     rprintln!("Next position is {}, {}", nextPos.x, nextPos.y);
     screen.update_black_display();
     screen.update_red_display();
+    // screen.update_black_display();
     screen.refresh_display();
 
     rprintln!("Going to sleep");

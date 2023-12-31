@@ -106,7 +106,7 @@ impl<'d, SPI, DC, RST, BUSY, DELAY> E29<'d, SPI, DC, RST, BUSY, DELAY>
             if data_write[i] > 0 {
                 rprintln!("B: {} - {}", i, data_write[i]);
             }
-            self.write_negate_data(&[data_write[i]]);
+            self.write_data(&[data_write[i]]);
         }
         self.end_data();
         self.delay.delay_ms(200);
@@ -125,7 +125,7 @@ impl<'d, SPI, DC, RST, BUSY, DELAY> E29<'d, SPI, DC, RST, BUSY, DELAY>
             if data_write[i] > 0 {
                 rprintln!("R: {} - {}", i, data_write[i]);
             }
-            self.write_negate_data(&[data_write[i]]);
+            self.write_data(&[data_write[i]]);
         }
         self.end_data();
 
@@ -229,19 +229,22 @@ impl<'d, SPI, DC, RST, BUSY, DELAY> E29<'d, SPI, DC, RST, BUSY, DELAY>
     }
 
     pub fn clear_screen(&mut self) -> Result<(), ()> {
+        self.read_busy();
         self.write_command(0x10, &[]);
         self.start_data();
         for i in 0..PIXEL_REGISTERS {
-            self.spi.write(&[0xff]);
+            self.spi.write(&[0x00]);
         }
         self.end_data();
         self.write_command(0x13, &[]);
         self.start_data();
         for i in 0..PIXEL_REGISTERS {
-            self.spi.write(&[0xff]);
+            self.spi.write(&[0x00]);
         }
         self.end_data();
         self.write_command(0x12, &[]);
+        self.delay.delay_ms(200);
+        self.read_busy();
         self.delay.delay_ms(200);
         Ok(())
     }
