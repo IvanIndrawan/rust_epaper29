@@ -1,7 +1,5 @@
 use embedded_graphics::framebuffer::{buffer_size, Framebuffer};
-use embedded_graphics::geometry::Dimensions;
 use embedded_graphics::pixelcolor::BinaryColor;
-use embedded_graphics::primitives::Rectangle;
 use embedded_graphics_core::pixelcolor::raw::{LittleEndian, RawU1};
 use embedded_hal::blocking::delay::DelayMs;
 use embedded_hal::blocking::spi;
@@ -12,7 +10,7 @@ pub const WIDTH: usize = 128;
 pub const HEIGHT: usize = 296;
 
 pub const PIXEL_REGISTERS: usize = WIDTH * HEIGHT / 8;
-
+pub type E29Buffer = Framebuffer<BinaryColor, RawU1, LittleEndian, WIDTH, HEIGHT, {buffer_size::<BinaryColor>(WIDTH, HEIGHT)}>;
 
 pub struct E29<'d, SPI, DC, RST, BUSY, DELAY>
     where
@@ -20,7 +18,7 @@ pub struct E29<'d, SPI, DC, RST, BUSY, DELAY>
         DC: OutputPin,
         RST: OutputPin,
         BUSY: InputPin,
-        DELAY: DelayMs<u8>,
+        DELAY: DelayMs<u16>,
 {
     /// SPI
     spi: SPI,
@@ -43,8 +41,8 @@ pub struct E29<'d, SPI, DC, RST, BUSY, DELAY>
     ///delay
     delay: &'d mut DELAY,
 
-    black_display: Framebuffer<BinaryColor, RawU1, LittleEndian, WIDTH, HEIGHT, {buffer_size::<BinaryColor>(WIDTH, HEIGHT)}>,
-    red_display: Framebuffer<BinaryColor, RawU1, LittleEndian, WIDTH, HEIGHT, {buffer_size::<BinaryColor>(WIDTH, HEIGHT)}>,
+    black_display: E29Buffer,
+    red_display: E29Buffer,
 }
 
 impl<'d, SPI, DC, RST, BUSY, DELAY> E29<'d, SPI, DC, RST, BUSY, DELAY>
@@ -53,7 +51,7 @@ impl<'d, SPI, DC, RST, BUSY, DELAY> E29<'d, SPI, DC, RST, BUSY, DELAY>
         DC: OutputPin,
         RST: OutputPin,
         BUSY: InputPin,
-        DELAY: DelayMs<u8>,
+        DELAY: DelayMs<u16>,
 {
     /// Creates a new driver instance that uses hardware SPI.
     pub fn new(
@@ -83,11 +81,11 @@ impl<'d, SPI, DC, RST, BUSY, DELAY> E29<'d, SPI, DC, RST, BUSY, DELAY>
         display
     }
 
-    pub fn get_black_display(&mut self) -> &mut Framebuffer<BinaryColor, RawU1, LittleEndian, WIDTH, HEIGHT, {buffer_size::<BinaryColor>(WIDTH, HEIGHT)}> {
+    pub fn get_black_display(&mut self) -> &mut E29Buffer {
         return &mut self.black_display;
     }
 
-    pub fn get_red_display(&mut self) -> &mut Framebuffer<BinaryColor, RawU1, LittleEndian, WIDTH, HEIGHT, {buffer_size::<BinaryColor>(WIDTH, HEIGHT)}> {
+    pub fn get_red_display(&mut self) -> &mut E29Buffer {
         return &mut self.red_display;
     }
 
@@ -97,17 +95,14 @@ impl<'d, SPI, DC, RST, BUSY, DELAY> E29<'d, SPI, DC, RST, BUSY, DELAY>
         data_write.copy_from_slice(&data[0..]);
 
         self.read_busy();
-
         self.write_command(0x10, &[]);
 
         rprintln!("Updating black display with data ");
         self.start_data();
-        for i in 0..PIXEL_REGISTERS {
-            if data_write[i] > 0 {
-                rprintln!("B: {} - {}", i, data_write[i]);
-            }
-            self.write_data(&[data_write[i]]);
-        }
+        self.write_data(&data_write);
+        // for i in 0..PIXEL_REGISTERS {
+        //     self.write_data(&[data_write[i]]);
+        // }
         self.end_data();
         self.delay.delay_ms(200);
     }
@@ -121,12 +116,10 @@ impl<'d, SPI, DC, RST, BUSY, DELAY> E29<'d, SPI, DC, RST, BUSY, DELAY>
         self.write_command(0x13, &[]);
         rprintln!("Updating red display with data ");
         self.start_data();
-        for i in 0..PIXEL_REGISTERS {
-            if data_write[i] > 0 {
-                rprintln!("R: {} - {}", i, data_write[i]);
-            }
-            self.write_data(&[data_write[i]]);
-        }
+        self.write_data(&data_write);
+        // for i in 0..PIXEL_REGISTERS {
+        //     self.write_data(&[data_write[i]]);
+        // }
         self.end_data();
 
         self.delay.delay_ms(200);
@@ -144,31 +137,31 @@ impl<'d, SPI, DC, RST, BUSY, DELAY> E29<'d, SPI, DC, RST, BUSY, DELAY>
     {
         self.hard_reset().unwrap();
 
-        self.write_command(0x06, &[]).unwrap();
-        self.write_data(&[0x17]).unwrap();
-        self.write_data(&[0x17]).unwrap();
-        self.write_data(&[0x17]).unwrap();
+        self.write_command(0x06, &[0x17, 0x17, 0x17]).unwrap();
+        // self.write_data(&[0x17]).unwrap();
+        // self.write_data(&[0x17]).unwrap();
+        // self.write_data(&[0x17]).unwrap();
 
         self.write_command(0x04, &[]).unwrap();
         self.read_busy(); //waiting for the electronic paper IC to release the idle signal
 
-        self.write_command(0x00, &[]).unwrap();   //panel setting
-        self.write_data(&[0x8f]).unwrap();
+        self.write_command(0x00, &[0x8f]).unwrap();   //panel setting
+        // self.write_data(&[0x8f]).unwrap();
 
-        self.write_command(0x50, &[]);    //VCOM AND DATA INTERVAL SETTING
-        self.write_data(&[0x77]);   //Bmode:VBDF 17|D7 VBDW 97 VBDB 57
+        self.write_command(0x50, &[0x77]);    //VCOM AND DATA INTERVAL SETTING
+        // self.write_data(&[0x77]);   //Bmode:VBDF 17|D7 VBDW 97 VBDB 57
 
-        self.write_command(0x61, &[]).unwrap();    //set resolution
-        self.write_data(&[0x80]).unwrap();
-        self.write_data(&[0x01]).unwrap();
-        self.write_data(&[0x28]).unwrap();
+        self.write_command(0x61, &[0x80, 0x01, 0x28]).unwrap();    //set resolution
+        // self.write_data(&[0x80]).unwrap();
+        // self.write_data(&[0x01]).unwrap();
+        // self.write_data(&[0x28]).unwrap();
 
         Ok(())
     }
 
     pub fn hard_reset(&mut self) -> Result<(), ()>
         where
-            DELAY: DelayMs<u8>,
+            DELAY: DelayMs<u16>,
     {
         self.rst.set_high();
         self.delay.delay_ms(200);
@@ -187,11 +180,8 @@ impl<'d, SPI, DC, RST, BUSY, DELAY> E29<'d, SPI, DC, RST, BUSY, DELAY>
             self.delay.delay_ms(200);
             x=x+1;
             if self.busy.is_high().map_err(|_| false).unwrap() {
-                // rprintln!("Busy pin is released");
                 break 'busy_loop;
             }
-            rprintln!("Still busy {}", x);
-
         }
 
     }
@@ -199,7 +189,7 @@ impl<'d, SPI, DC, RST, BUSY, DELAY> E29<'d, SPI, DC, RST, BUSY, DELAY>
         self.dc.set_low().map_err(|_| ())?;
         self.spi.write(&[command]);
         if !params.is_empty() {
-            self.start_data()?;
+            // self.start_data()?;
             self.write_data(params)?;
         }
         Ok(())
@@ -230,19 +220,21 @@ impl<'d, SPI, DC, RST, BUSY, DELAY> E29<'d, SPI, DC, RST, BUSY, DELAY>
 
     pub fn clear_screen(&mut self) -> Result<(), ()> {
         self.read_busy();
+
         self.write_command(0x10, &[]);
         self.start_data();
-        for i in 0..PIXEL_REGISTERS {
-            self.spi.write(&[0x00]);
-        }
+        let clear_arr: [u8;PIXEL_REGISTERS] = [0x00;PIXEL_REGISTERS];
+        self.spi.write(&clear_arr);
+
         self.end_data();
+
         self.write_command(0x13, &[]);
         self.start_data();
-        for i in 0..PIXEL_REGISTERS {
-            self.spi.write(&[0x00]);
-        }
+        self.spi.write(&clear_arr);
         self.end_data();
+
         self.write_command(0x12, &[]);
+
         self.delay.delay_ms(200);
         self.read_busy();
         self.delay.delay_ms(200);
@@ -250,25 +242,13 @@ impl<'d, SPI, DC, RST, BUSY, DELAY> E29<'d, SPI, DC, RST, BUSY, DELAY>
     }
 
     pub fn sleep(&mut self) -> Result<(),()> {
+        rprintln!("Sleeping");
         self.write_command(0x02, &[]).unwrap(); //power off
         self.read_busy();
-        self.write_command(0x07, &[]).unwrap(); // deep sleep
-        self.write_data(&[0xA5]).unwrap();
+        self.write_command(0x07, &[0xA5]).unwrap(); // deep sleep
+        // self.write_data(&[0xA5]).unwrap();
 
-        self.delay.delay_ms(200);
+        self.delay.delay_ms(2000);
         Ok(())
-    }
-}
-
-impl<'d, SPI, DC, RST, BUSY, DELAY> Dimensions for E29<'d, SPI, DC, RST, BUSY, DELAY>
-    where
-        SPI: spi::Write<u8>,
-        DC: OutputPin,
-        RST: OutputPin,
-        BUSY: InputPin,
-        DELAY: DelayMs<u8>,
-{
-    fn bounding_box(&self) -> Rectangle {
-        todo!()
     }
 }

@@ -5,12 +5,6 @@ use rtt_target::{rtt_init_print, rprintln};
 
 // The trait used by formatting macros like write! and writeln!
 use core::fmt::Write as FmtWrite;
-use embedded_graphics::mono_font::MonoTextStyleBuilder;
-use embedded_graphics::primitives::{Circle, Line, Primitive, PrimitiveStyle};
-use embedded_graphics::text::{Baseline, Text, TextStyleBuilder};
-use embedded_graphics_core::Drawable;
-use embedded_graphics_core::geometry::Point;
-use embedded_graphics_core::pixelcolor::BinaryColor;
 
 use embedded_hal::digital::v2::OutputPin;
 // The macro for our start-up function
@@ -25,13 +19,18 @@ use rp_pico::hal::prelude::*;
 
 // A shorter alias for the Peripheral Access Crate, which provides low-level
 // register access
-use rp_pico::hal::{gpio, pac, spi};
+use rp_pico::hal::{gpio, pac, spi, Spi};
 
 // A shorter alias for the Hardware Abstraction Layer, which provides
 // higher-level drivers.
 use rp_pico::hal;
 use rp_pico::hal::fugit::RateExtU32;
-use rust_epaper29::epaper29::E29;
+use rp_pico::hal::gpio::bank0::{Gpio10, Gpio11, Gpio12, Gpio13, Gpio8};
+use rp_pico::hal::gpio::{FunctionSio, FunctionSpi, Pin, PullDown, PullUp, SioInput, SioOutput};
+use rp_pico::hal::spi::Enabled;
+use rp_pico::pac::SPI1;
+use rust_epaper29::demo_drawing::{demo_drawing_black, demo_drawing_red};
+use rust_epaper29::epaper29::{E29, E29Buffer, HEIGHT, WIDTH};
 
 /// Entry point to our bare-metal application.
 ///
@@ -106,36 +105,12 @@ unsafe fn main() -> ! {
     rprintln!("Clearing screen");
     screen.clear_screen();
 
-
-
     rprintln!("Start drawing");
+    demo_drawing_black(screen.get_black_display());
+    demo_drawing_red(screen.get_red_display());
 
-    //write a line here
-    let style = MonoTextStyleBuilder::new()
-        .font(&embedded_graphics::mono_font::ascii::FONT_6X10)
-        .background_color(BinaryColor::Off)
-        .text_color(BinaryColor::On)
-        .build();
-
-    let text_style = TextStyleBuilder::new().baseline(Baseline::Top).build();
-    let nextPos = Text::with_text_style("Hello world!", Point::new(10, 10), style, text_style).draw(screen.get_red_display()).unwrap();
-
-    let _ = Line::new(Point::new(64, 64), Point::new(30, 40))
-        .into_styled(PrimitiveStyle::with_stroke(BinaryColor::On, 4))
-        .draw(screen.get_red_display());
-
-    let _ = Circle::with_center(Point::new(64, 64), 80)
-        .into_styled(PrimitiveStyle::with_stroke(BinaryColor::On, 1))
-        .draw(screen.get_red_display());
-
-    let _ = Circle::with_center(Point::new(64, 144), 80)
-        .into_styled(PrimitiveStyle::with_stroke(BinaryColor::On, 2))
-        .draw(screen.get_black_display());
-
-    rprintln!("Next position is {}, {}", nextPos.x, nextPos.y);
     screen.update_black_display();
     screen.update_red_display();
-    // screen.update_black_display();
     screen.refresh_display();
 
     rprintln!("Going to sleep");
@@ -146,3 +121,4 @@ unsafe fn main() -> ! {
     }
 
 }
+
